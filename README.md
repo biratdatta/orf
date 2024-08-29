@@ -2,9 +2,19 @@ This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next
 
 ## Getting Started
 
-First, run the development server:
+First,
+
+install all the required dependencies
+```bash
+npm install
+# or
+yarn
+
+```
+ and run the development server:
 
 ```bash
+
 npm run dev
 # or
 yarn dev
@@ -20,6 +30,22 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
 
+
+
+The project structure is as follows:-
+
+- **.next/**
+- **app/**
+  - `layout.tsx`
+   - `page.tsx`
+- **components/**
+  - `AudioRecorder.tsx`
+ 
+ 
+ 
+
+
+ 
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
