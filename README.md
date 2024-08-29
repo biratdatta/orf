@@ -32,7 +32,7 @@ This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-opti
 
 
 
-The project structure is as follows:-
+## Project Structure
 
 - **.next/**
 - **app/**
