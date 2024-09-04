@@ -15,7 +15,7 @@ import {
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
-import { AudioVisualizer } from "react-audio-visualize";
+
 
 const SAMPLE_RATE = 44100;
 const CHUNK_DURATION = 400;
