@@ -15,11 +15,14 @@ import {
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
-const SAMPLE_RATE = 44100;
+import { AudioVisualizer } from "react-audio-visualize";
 
-const AudioRecorder: React.FC = () => {
+const SAMPLE_RATE = 44100;
+const CHUNK_DURATION = 400;
+const STRIDE_DURATION = 30;
+ const AudioRecorder: React.FC = () => {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
+  const [audioChunks, setAudioChunks] = useState<Float32Array[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [progress, setProgress] = useState(0);
   const [audioData, setAudioData] = useState<Uint8Array[][]>([]);
@@ -29,52 +32,143 @@ const AudioRecorder: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [textInput, setTextInput] = useState<string>("");  
   const [comparisonResult, setComparisonResult] = useState<string>(""); 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const processorNodeRef = useRef<ScriptProcessorNode | null>(null);
+  const audioBufferRef = useRef<Float32Array>(new Float32Array(0));
+  
 
   useEffect(() => {
-    if (mediaRecorder) {
-      mediaRecorder.ondataavailable = (event) => {
-        setAudioChunks((prev) => [...prev, event.data]);
-        console.log("Data available:", event.data);
-      };
+    return () => {
+      if (mediaRecorder) {
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
-      mediaRecorder.onstart = () => {
-        console.log("Recording started");
-        intervalRef.current = setInterval(() => {
-          setProgress((prev) => (prev >= 100 ? 100 : prev + 2));
-        }, 100);
-      };
 
-      mediaRecorder.onstop = () => {
-        console.log("Recording stopped");
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
+
+ const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      sourceNodeRef.current = audioContextRef.current.createMediaStreamSource(stream);
+      processorNodeRef.current = audioContextRef.current.createScriptProcessor(4096, 1, 1);
+
+      sourceNodeRef.current.connect(processorNodeRef.current);
+      processorNodeRef.current.connect(audioContextRef.current.destination);
+
+      processorNodeRef.current.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        const newBuffer = new Float32Array(audioBufferRef.current.length + inputData.length);
+        newBuffer.set(audioBufferRef.current);
+        newBuffer.set(inputData, audioBufferRef.current.length);
+        audioBufferRef.current = newBuffer;
+
+        while (audioBufferRef.current.length >= SAMPLE_RATE * (CHUNK_DURATION / 1000)) {
+          const chunkSize = SAMPLE_RATE * (CHUNK_DURATION / 1000);
+          const chunk = audioBufferRef.current.slice(0, chunkSize);
+          setAudioChunks(prevChunks => [...prevChunks, chunk]);
+          audioBufferRef.current = audioBufferRef.current.slice(SAMPLE_RATE * (STRIDE_DURATION / 1000));
         }
-        setProgress(0);
-        processAudioChunks();
       };
+
+      setIsRecording(true);
+      setProgress(0);
+      setAudioChunks([]);
+
+      const progressInterval = setInterval(() => {
+        setProgress(prev => (prev >= 100 ? 100 : prev + 1));
+      }, 100);
+
+      return () => {
+        clearInterval(progressInterval);
+        if (sourceNodeRef.current && processorNodeRef.current) {
+          sourceNodeRef.current.disconnect();
+          processorNodeRef.current.disconnect();
+        }
+        stream.getTracks().forEach(track => track.stop());
+      };
+    } catch (error) {
+      console.error("Error starting recording:", error);
     }
-  }, [mediaRecorder]);
-
-  const startRecording = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-    setMediaRecorder(recorder);
-    setAudioChunks([]);  
-    recorder.start();
-    setIsRecording(true);
   };
 
+ 
   const stopRecording = () => {
-    mediaRecorder?.stop();
-    setIsRecording(false);
+    if (isRecording) {
+      setIsRecording(false);
+      if (sourceNodeRef.current && processorNodeRef.current) {
+        sourceNodeRef.current.disconnect();
+        processorNodeRef.current.disconnect();
+      }
+      processAudioChunks();
+    }
+  };
+ const processAudioChunks = () => {
+    console.log("Processing audio chunks");
+    console.log("Number of chunks:", audioChunks.length);
+
+    if (audioChunks.length > 0) {
+      const combinedChunks = new Float32Array(audioChunks.reduce((acc, chunk) => acc + chunk.length, 0));
+      let offset = 0;
+      audioChunks.forEach(chunk => {
+        combinedChunks.set(chunk, offset);
+        offset += chunk.length;
+      });
+
+      const audioBuffer = audioContextRef.current!.createBuffer(1, combinedChunks.length, SAMPLE_RATE);
+      audioBuffer.getChannelData(0).set(combinedChunks);
+
+      const audioBlob = audioBufferToWav(audioBuffer);
+      console.log("Created audio blob, size:", audioBlob.size);
+      processAudioBlob(audioBlob);
+    } else {
+      console.error("No audio data available");
+    }
   };
 
-  const processAudioChunks = () => {
-    const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-    processAudioBlob(audioBlob);
+  const audioBufferToWav = (buffer: AudioBuffer): Blob => {
+    const numOfChan = buffer.numberOfChannels;
+    const length = buffer.length * numOfChan * 2 + 44;
+    const data = new ArrayBuffer(length);
+    const view = new DataView(data);
+
+    // Write WAV header
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, length - 8, true);
+    writeString(view, 8, 'WAVE');
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numOfChan, true);
+    view.setUint32(24, buffer.sampleRate, true);
+    view.setUint32(28, buffer.sampleRate * 2 * numOfChan, true);
+    view.setUint16(32, numOfChan * 2, true);
+    view.setUint16(34, 16, true);
+    writeString(view, 36, 'data');
+    view.setUint32(40, length - 44, true);
+
+    // Write PCM audio data
+    const floatTo16BitPCM = (output: DataView, offset: number, input: Float32Array) => {
+      for (let i = 0; i < input.length; i++, offset += 2) {
+        const s = Math.max(-1, Math.min(1, input[i]));
+        output.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      }
+    };
+
+    floatTo16BitPCM(view, 44, buffer.getChannelData(0));
+
+    return new Blob([data], { type: 'audio/wav' });
   };
+
+  const writeString = (view: DataView, offset: number, string: string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -86,8 +180,8 @@ const AudioRecorder: React.FC = () => {
       processAudioBlob(file);
     }
   };
-
-  const processAudioBlob = (audioBlob: Blob) => {
+const processAudioBlob = (audioBlob: Blob) => {
+    console.log("Processing audio blob, size:", audioBlob.size);
     const reader = new FileReader();
 
     reader.onload = async (event) => {
@@ -99,6 +193,7 @@ const AudioRecorder: React.FC = () => {
 
         try {
           const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+          console.log("Audio decoded successfully, duration:", audioBuffer.duration);
           const channelData = audioBuffer.getChannelData(0);
           const frames = createOverlappingFrames(new Float32Array(channelData));
 
@@ -109,19 +204,26 @@ const AudioRecorder: React.FC = () => {
 
           setAudioData(prev => [...prev, uint8Frames]);
 
-          const transcribedText = await transcribeAudioToText(arrayBuffer);
+
+            /* TODO: Comparison 
+          
           setExtractedText(transcribedText);
-          compareText(textInput, transcribedText);  
+          compareText(textInput, transcribedText);   */
 
         } catch (error) {
           console.error("Error decoding audio data:", error);
         }
+      } else {
+        console.error("Empty ArrayBuffer");
       }
+    };
+
+    reader.onerror = (error) => {
+      console.error("FileReader error:", error);
     };
 
     reader.readAsArrayBuffer(audioBlob);
   };
-
   const createOverlappingFrames = (audioBuffer: Float32Array): Float32Array[] => {
     const bufferSize = SAMPLE_RATE * 2; // 2 seconds buffer
     const frameSize = SAMPLE_RATE * 0.4; // 0.4 seconds frame
@@ -283,6 +385,7 @@ const AudioRecorder: React.FC = () => {
           variant="outlined"
         />
       </Box>
+  
 
       <Box sx={{ marginTop: 2 }}>
         <Typography variant="h6">Comparison Result:</Typography>
