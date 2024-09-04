@@ -5,7 +5,6 @@ import {
   Button,
   Typography,
   Box,
-  IconButton,
   Paper,
   Input,
   Modal,
@@ -13,11 +12,9 @@ import {
   Fade,
   TextField,
 } from "@mui/material";
-import StopIcon from "@mui/icons-material/Stop";
-import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-
+import PauseIcon from "@mui/icons-material/Pause";
 const SAMPLE_RATE = 44100;
 
 const AudioRecorder: React.FC = () => {
@@ -27,7 +24,7 @@ const AudioRecorder: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [audioData, setAudioData] = useState<Uint8Array[][]>([]);
   const [uploadedAudio, setUploadedAudio] = useState<string | null>(null);
-  const [referenceText, setReferenceText] = useState<string>("");  
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [extractedText, setExtractedText] = useState<string>("");  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [textInput, setTextInput] = useState<string>("");  
@@ -84,6 +81,7 @@ const AudioRecorder: React.FC = () => {
     if (file) {
       const audioUrl = URL.createObjectURL(file);
       setUploadedAudio(audioUrl);
+      setUploadedFileName(file.name);
       setIsModalOpen(true);
       processAudioBlob(file);
     }
@@ -111,7 +109,6 @@ const AudioRecorder: React.FC = () => {
 
           setAudioData(prev => [...prev, uint8Frames]);
 
-        
           const transcribedText = await transcribeAudioToText(arrayBuffer);
           setExtractedText(transcribedText);
           compareText(textInput, transcribedText);  
@@ -168,48 +165,49 @@ const AudioRecorder: React.FC = () => {
     }
     setComparisonResult(result);
   };
- 
 
-  // Return the Trnascribe Text to later do Comparisson
- const transcribeAudioToText = async (arrayBuffer: ArrayBuffer): Promise<string> => {
-  const response = await fetch('/transcribe', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'audio/wav',  
-    },
-    body: arrayBuffer,
-  });
+ /* TODO : Transcription Service needs to be done, otherwise error will throw */
+  
+  // Transcription API for the Modal 
+  const transcribeAudioToText = async (arrayBuffer: ArrayBuffer): Promise<string> => {
+    const response = await fetch('/transcribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'audio/wav',
+      },
+      body: arrayBuffer,
+    });
 
-  if (!response.ok) {
-    throw new Error('Failed to transcribe audio');
-  }
+    if (!response.ok) {
+      throw new Error('Failed to transcribe audio');
+    }
 
-  const data = await response.json();
-  return data.transcribedText; 
-};
+    const data = await response.json();
+    return data.transcribedText;
+  };
 
   return (
+    
     <Paper elevation={3} sx={{ padding: 2, textAlign: "center" }}>
       <Typography variant="h6" gutterBottom>
-        Audio Input 
-      </Typography>
-      
-      <IconButton
-        color={isRecording ? "secondary" : "primary"}
-        onClick={isRecording ? stopRecording : startRecording}
-        sx={{ margin: 1 }}
-      >
-        {isRecording ? (
-          <StopIcon sx={{ fontSize: 50 }} />
-        ) : (
-          <FiberManualRecordIcon sx={{ fontSize: 50 }} />
-        )}
-      </IconButton>
-      <Typography variant="body2" color="textSecondary">
-        {isRecording ? "Recording in progress..." : "Click to start recording"}
+        Choose your Audio Source
       </Typography>
 
-      <Box sx={{ marginTop: 2 }}>
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 2, marginBottom: 2 }}>
+      <Button
+  variant="outlined"
+  color={isRecording ? "secondary" : "primary"}
+  onClick={isRecording ? stopRecording : startRecording}
+  startIcon={isRecording ? <PauseIcon /> : <PlayArrowIcon />}
+  sx={{
+    border: "1px solid",
+    borderColor: isRecording ? "secondary.main" : "primary.main",
+    backgroundColor: "transparent",
+  }}
+>
+  {isRecording ? "Stop Recording" : "Start Recording"}
+</Button>
+
         <Input
           type="file"
           onChange={handleFileUpload}
@@ -217,13 +215,23 @@ const AudioRecorder: React.FC = () => {
           id="upload-button"
         />
         <label htmlFor="upload-button">
-          <Button variant="contained" component="span" startIcon={<UploadFileIcon />}>
-            Upload Audio
+          <Button 
+            variant="outlined" 
+            component="span" 
+            startIcon={<UploadFileIcon />} 
+            sx={{ border: "1px solid", backgroundColor: "transparent" }}
+          >
+            {uploadedFileName ? "Reupload Audio" : "Upload Audio"}
           </Button>
         </label>
       </Box>
+      
+      {uploadedFileName && (
+        <Typography variant="body2" color="textSecondary" sx={{ marginBottom: 2 }}>
+          Uploaded file: {uploadedFileName}
+        </Typography>
+      )}
 
-      {/* Modal for Uploaded Audio Playback */}
       <Modal
         open={isModalOpen}
         onClose={handleModalClose}
@@ -251,15 +259,7 @@ const AudioRecorder: React.FC = () => {
               Playback Uploaded Audio
             </Typography>
             <audio ref={audioRef} controls src={uploadedAudio ?? undefined} />
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<PlayArrowIcon />}
-              sx={{ marginTop: 2 }}
-              onClick={() => audioRef.current?.play()}
-            >
-              Play
-            </Button>
+            
             <Button
               variant="contained"
               color="secondary"
@@ -274,25 +274,20 @@ const AudioRecorder: React.FC = () => {
 
       <Box sx={{ marginTop: 2 }}>
         <TextField
-          label="Enter Reference Text"
-          variant="outlined"
+          label="Enter Text for Comparison"
+          value={textInput}
+          onChange={handleTextInputChange}
           fullWidth
-          value={referenceText}
-          onChange={(e) => setReferenceText(e.target.value)}
+          multiline
+          rows={4}
+          variant="outlined"
         />
       </Box>
 
       <Box sx={{ marginTop: 2 }}>
-        <TextField
-          label="Enter Text to Compare"
-          variant="outlined"
-          fullWidth
-          value={textInput}
-          onChange={handleTextInputChange}
-        />
+        <Typography variant="h6">Comparison Result:</Typography>
         <Typography
           variant="body1"
-          sx={{ marginTop: 2, whiteSpace: "pre-wrap" }}
           dangerouslySetInnerHTML={{ __html: comparisonResult }}
         />
       </Box>

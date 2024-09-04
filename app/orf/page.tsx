@@ -1,13 +1,15 @@
- 
-import { Container, CssBaseline, Typography } from '@mui/material';
-import AudioRecorder from '../../components/AudioRecorder';  
+import { Container, CssBaseline, Typography, Box } from '@mui/material';
+import AudioRecorder from '../../components/AudioManager';  
 
 const Home = () => {
   return (
-    <Container component="main" maxWidth="xs">
+    <Container component="main" maxWidth="md">
       <CssBaseline />
-      <Typography variant="h4" align="center">ORF App</Typography>
-      <AudioRecorder />
+     <Box sx={{ marginTop: 6 }}>
+      <Typography variant="h4" align="center">ORF DEMO APPLICATION  </Typography>
+      <Box sx={{ marginTop: 6 }}> </Box>
+        <AudioRecorder />
+      </Box>
     </Container>
   );
 };
