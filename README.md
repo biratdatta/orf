@@ -41,8 +41,15 @@ This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-opti
 - **components/**
   - `AudioRecorder.tsx`
  
- 
- 
+ ## UI of the Project:
+(v1 mock to UI)
+![image](https://github.com/user-attachments/assets/32d1de67-fc13-4f62-a597-3fe60225a6e9)
+![image](https://github.com/user-attachments/assets/4c0ba2c6-5f91-4983-9294-137907d11729)
+![image](https://github.com/user-attachments/assets/cfa5b9ce-31ae-46d3-bf02-02aad2224bc0)
+
+
+
+
 
 
  
